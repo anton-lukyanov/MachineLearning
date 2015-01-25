@@ -1,0 +1,102 @@
+---
+title: "Practical Machine Learning PA"
+author: "Anton Lukyanov"
+date: "Sunday, January 25, 2015"
+output: html_document
+---
+
+####Executive Summary
+Main topic of this letter is Human Activity Recognition (HAR) problem. Research based on Weight Lifting Exercise Dataset. The data is collected from accelerometers on the arm, forearm, belt and dumbell of 6 participants.The data come from this source: [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har)
+
+This is a Practical Machine Learning Peer Assessment for Data Science Specialization from Coursera and John Hopkins Bloomberg School of Public Health.
+
+####Study design
+Before building ML model we should chose appropriate variables, in other words clean data from the variables with significant share of ```NAs``` or near zero covariates.
+Next we should chose ML algorithm - in this study we will use Random Forest.
+We will povide the characteristics of the model, such as accuracy, which will evaluate the quality of the predictions.
+
+#####Preparation
+```{r}
+library(caret)
+library(randomForest)
+set.seed(1982)
+```
+
+#####Load Data
+```{r eval=FALSE}
+URLtrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+URLtest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+filenameTrain <- "pml-training.csv"
+filenameTest <- "pml-testing.csv"
+download.file(url=URLtrain, destfile=filenameTrain,method="curl")
+download.file(url=URLtest, destfile=filenameTest,method="curl")
+```
+```{r}
+training <- read.csv("pml-training.csv",row.names=1,na.strings = "")
+testing <- read.csv("pml-testing.csv",row.names=1,na.strings = "NA")
+```
+
+#####Data Cleaning
+To reduce number of variables we:
+
+- remove near zero covariates,
+
+- remove variables with missing values,
+
+- remove columns with extra information such as 'name', 'timestamp' and so forth.
+
+
+```{r}
+#Remove near zero covariates
+nzc <- nearZeroVar(training,saveMetrics=TRUE)
+training <- training[,!nzc$nzv]
+testing <- testing[,!nzc$nzv]
+
+#Remove NAs
+training_noNA <- training[,(colSums(is.na(training)) == 0)]
+testing_noNA <- testing[,(colSums(is.na(testing)) == 0)]
+
+#Remove names and timestamps
+colTrain <- c("user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","num_window")
+colTest <- c("user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","num_window","problem_id")
+training_noCol <- training_noNA[,!(names(training_noNA) %in% colTrain)]
+testing_noCol <- testing_noNA[,!(names(testing_noNA) %in% colTest)]
+
+inTrain <- createDataPartition(y=training$classe, p=0.7, list=FALSE)
+training_clean <- training_noCol[inTrain,]
+validation_clean <- training_noCol[-inTrain,]
+```
+
+New set contain 52 predictors.
+
+#####Random Forest
+```{r}
+#Fit model
+Fit <- train(classe ~ ., method = "rf", data = training_clean, importance = T, trControl = trainControl(method = "cv", number = 4))
+#Validate
+validation_pred <- predict(Fit, newdata=validation_clean)
+#Confusion Matrix and Accuracy
+confusionMatrix(validation_pred,validation_clean$classe)
+#Importance of variables
+imp <- varImp(Fit)$importance
+varImpPlot(Fit$finalModel, sort = TRUE, type = 1, pch = 19, col = 1, cex = 0.45, main = "Importance of the Predictors")
+
+```
+
+#####Conclusion
+
+We build model based on the Random Forest algorithm with the Accuracy 0.99.
+Also we can highlight the most imporatnt variables for the prediction of HAR from the plot above.
+
+#####Appendix. Prediction for the Submission part of PA.
+```{r}
+testing_pred <- predict(Fit, newdata=testing_noCol)
+write_files <- function(x) {
+        n <- length(x)
+        for (i in 1:n) {
+                filename <- paste0("problem_id", i, ".txt")
+                write.table(x[i], file=filename, quote=FALSE, row.names=FALSE,col.names=FALSE)
+        }
+}
+write_files(testing_pred)
+```
